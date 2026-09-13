@@ -1,0 +1,5 @@
+<view class="menu">
+  <text class="title">MinaBridge 茶饮菜单</text>
+  <view class="card"><text>茉莉绿茶</text><text class="price">¥12</text></view>
+  <view class="card"><text>桂花乌龙</text><text class="price">¥16</text></view>
+</view>

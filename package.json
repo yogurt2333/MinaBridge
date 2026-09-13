@@ -1,0 +1,32 @@
+{
+  "name": "minabridge",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mina-bridge": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@babel/parser": "8.0.5",
+    "htmlparser2": "12.0.0",
+    "postcss": "8.5.28",
+    "postcss-selector-parser": "7.1.6",
+    "postcss-value-parser": "4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "@vitejs/plugin-vue2": "2.3.4",
+    "playwright": "1.63.0",
+    "typescript": "7.0.2",
+    "vite": "7.3.6",
+    "vue": "2.7.16"
+  }
+}
