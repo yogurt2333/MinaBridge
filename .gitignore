@@ -1,0 +1,10 @@
+.scratch/
+**/project.private.config.json
+node_modules/
+dist/
+output/
+.test-output/
+test-results/
+.env
+.env.*
+!.env.example

@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "packageWeStoreCoffee/pages/home/home",
+    "packageWeStoreCoffee/pages/sku-picker/sku-picker",
+    "packageWeStoreCoffee/pages/checkout/checkout"
+  ],
+  "window": { "navigationBarTitleText": "咖啡点单原端验证" },
+  "componentFramework": "glass-easel",
+  "rendererOptions": {
+    "skyline": { "disableABTest": true, "sdkVersionBegin": "3.0.0", "sdkVersionEnd": "15.255.255" }
+  },
+  "lazyCodeLoading": "requiredComponents"
+}

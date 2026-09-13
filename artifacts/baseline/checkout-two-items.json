@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "tool": "automation_page_action",
+  "clientName": "Codex",
+  "result": {
+    "success": true,
+    "data": {
+      "orderId": "LOCAL_1789290906769",
+      "items": [
+        {
+          "itemId": "ITMTZLLVO01Y6",
+          "drinkId": 371,
+          "drinkName": "抹茶脑袋",
+          "imageUrl": "",
+          "specText": "冰 / 标准 / 大杯 / 加料:珍珠",
+          "basePrice": 17,
+          "extraPrice": 5,
+          "totalPrice": 22
+        },
+        {
+          "itemId": "ITMTZLMSKC5HU",
+          "drinkId": 371,
+          "drinkName": "抹茶脑袋",
+          "imageUrl": "",
+          "specText": "冰 / 标准 / 大杯 / 加料:珍珠",
+          "basePrice": 17,
+          "extraPrice": 5,
+          "totalPrice": 22
+        }
+      ],
+      "status": "pending",
+      "createTime": "2026-09-13T09:15:06.769Z",
+      "itemCount": 2,
+      "totalPrice": 44
+    }
+  }
+}

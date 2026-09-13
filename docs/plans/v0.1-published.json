@@ -1,0 +1,81 @@
+[
+  {
+    "key": "T1",
+    "number": 2,
+    "id": 5440498487,
+    "title": "CLI 迁移最小静态页面并生成可构建的 Vue 2 工程",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/2",
+    "deps": []
+  },
+  {
+    "key": "T2",
+    "number": 3,
+    "id": 5440498867,
+    "title": "迁移列表交互：数据绑定、事件和状态更新",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/3",
+    "deps": [
+      "T1"
+    ]
+  },
+  {
+    "key": "T3",
+    "number": 4,
+    "id": 5440499389,
+    "title": "迁移跨页流程：参数、返回和本地存储",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/4",
+    "deps": [
+      "T2"
+    ]
+  },
+  {
+    "key": "T4",
+    "number": 5,
+    "id": 5440499887,
+    "title": "迁移咖啡三页面并验证 22 元和 44 元结算",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/5",
+    "deps": [
+      "T3"
+    ]
+  },
+  {
+    "key": "T5",
+    "number": 6,
+    "id": 5440500412,
+    "title": "CLI 调用可替换模型完成受限的页面改写",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/6",
+    "deps": [
+      "T1"
+    ]
+  },
+  {
+    "key": "T6",
+    "number": 7,
+    "id": 5440501033,
+    "title": "CLI verify 执行构建和浏览器验收并保存证据",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/7",
+    "deps": [
+      "T4"
+    ]
+  },
+  {
+    "key": "T7",
+    "number": 8,
+    "id": 5440501413,
+    "title": "根据验证失败自动修复并限制重试次数",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/8",
+    "deps": [
+      "T5",
+      "T6"
+    ]
+  },
+  {
+    "key": "T8",
+    "number": 9,
+    "id": 5440502153,
+    "title": "完成真实模型迁移实验与 v0.1 可复现交付",
+    "url": "https://github.com/yogurt2333/MinaBridge/issues/9",
+    "deps": [
+      "T7"
+    ]
+  }
+]
