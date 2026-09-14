@@ -29,15 +29,19 @@ export function convertTemplate(source: string, file: string, imageSource: (src:
     onclosetag(name) { if (tags[name] !== 'img') result += `</${tags[name]}>`; },
   }, { xmlMode: true, decodeEntities: true });
   parser.end(source);
-  return `<div>${result}</div>`;
+  return `<div class="minabridge-page">${result}</div>`;
 }
 
-export function convertStyle(source: string, file: string): string {
-  const css = postcss.parse(source, { from: file });
+export function convertStyle(source: string, file: string, pageStyle = false): string {
+  try {
+  const css = postcss.parse(source, { from: file, map: { prev: false } });
   css.walkAtRules(rule => { if (rule.name === 'import') throw new MigrationError(`${file}: CSS imports are not supported yet`); });
   css.walkRules(rule => {
     rule.selector = selectorParser(selectors => {
-      selectors.walkTags(tag => { tag.value = tag.value === 'page' ? 'body' : tags[tag.value] ?? tag.value; });
+      selectors.walkTags(tag => {
+        if (tag.value === 'page' && pageStyle) tag.replaceWith(selectorParser.className({ value: 'minabridge-page' }));
+        else tag.value = tag.value === 'page' ? 'body' : tags[tag.value] ?? tag.value;
+      });
     }).processSync(rule.selector);
   });
   css.walkDecls(decl => {
@@ -49,4 +53,8 @@ export function convertStyle(source: string, file: string): string {
     decl.value = value.toString();
   });
   return css.toString();
+  } catch (error) {
+    if (error instanceof MigrationError) throw error;
+    throw new MigrationError(`${file}: invalid WXSS: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }

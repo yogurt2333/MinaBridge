@@ -36,8 +36,8 @@ export async function migrate(input: string, output: string) {
       assets.set(file, `public/assets/${name}`);
       return `/assets/${name}`;
     });
-    const style = convertStyle(await read(`${route}.wxss`), `${route}.wxss`);
-    pages.push({ route, index, source: `<template>${template}</template>\n<script>export default {}</script>\n<style>${style}</style>\n` });
+    const style = convertStyle(await read(`${route}.wxss`), `${route}.wxss`, true);
+    pages.push({ route, index, source: `<template>${template}</template>\n<script>export default {}</script>\n<style scoped>${style}</style>\n` });
   }
   const globalStyle = convertStyle(await read('app.wxss', true), 'app.wxss');
   const files: Record<string, string | Buffer> = {};
@@ -46,14 +46,14 @@ export async function migrate(input: string, output: string) {
     'package.json': JSON.stringify({ name: 'minabridge-output', private: true, type: 'module', scripts: { dev: 'vite --host 127.0.0.1', build: 'vite build', preview: 'vite preview --host 127.0.0.1' }, dependencies: targetDependencies, devDependencies: targetDevDependencies }, null, 2),
     'index.html': '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>',
     'vite.config.js': "import { defineConfig } from 'vite';\nimport vue from '@vitejs/plugin-vue2';\nexport default defineConfig({ plugins: [vue()], base: './' });\n",
-    'src/main.js': `${pages.map(p => `import Page${p.index} from './pages/${p.index}.vue';`).join('\n')}\nimport Vue from 'vue';\nimport './global.css';\nconst routes = {${pages.map(p => `${JSON.stringify(p.route)}: Page${p.index}`).join(',')}};\nnew Vue({ render: h => h(routes[location.hash.slice(2)] || Page0) }).$mount('#app');\n`,
+    'src/main.js': `import './global.css';\n${pages.map(p => `import Page${p.index} from './pages/${p.index}.vue';`).join('\n')}\nimport Vue from 'vue';\nconst routes = {${pages.map(p => `${JSON.stringify(p.route)}: Page${p.index}`).join(',')}};\nnew Vue({ render: h => h(routes[location.hash.slice(2)] || Page0) }).$mount('#app');\n`,
     'src/global.css': globalStyle,
     'README.md': '# Generated Vue 2 project\n\nNode.js 24+ and npm required. Run npm install, npm run build, npm run dev.\n\nGeneration does not imply verification. See migration-report.json.\n',
   });
   for (const page of pages) files[`src/pages/${page.index}.vue`] = page.source;
   const report = { toolVersion: version, target: { framework: 'Vue', version: targetDependencies.vue }, sourceDigest: reader.digest(), pages: pages.map(p => ({ route: p.route, status: 'generated' })), generation: 'passed', verification: 'not-run', elapsedMs: Math.round(performance.now() - started) };
   files['migration-report.json'] = JSON.stringify(report, null, 2);
-  files['migration-report.md'] = `# Migration report\n\nGeneration: passed\nVerification: not-run\nPages: ${pages.length}\nSource digest: ${report.sourceDigest}\n`;
+  files['migration-report.md'] = `# Migration report\n\nTool: MinaBridge ${report.toolVersion}\nTarget: ${report.target.framework} ${report.target.version}\nGeneration: ${report.generation}\nVerification: ${report.verification}\nElapsed: ${report.elapsedMs} ms\nSource digest: ${report.sourceDigest}\n\n${report.pages.map(page => `- ${page.route}: ${page.status}`).join('\n')}\n`;
   for (const [file, text] of Object.entries(files)) {
     const path = join(output, file);
     await mkdir(resolve(path, '..'), { recursive: true });

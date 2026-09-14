@@ -42,9 +42,50 @@ test('CLI converts input content to a standalone Vue 2 project with unverified r
   assert.equal(report.verification, 'not-run');
   assert.equal(report.pages.length, 1);
   assert.match(report.sourceDigest, /^[a-f0-9]{64}$/);
+  const readable = await readFile(join(output, 'migration-report.md'), 'utf8');
+  assert.match(readable, /0\.1\.0-dev\.0/);
+  assert.match(readable, /2\.7\.16/);
+  assert.match(readable, /pages\/home\/index.*generated/);
+  assert.match(readable, /Elapsed: \d+ ms/);
   const second = await sample('第二个不同内容');
   assert.equal(run('migrate', second.input, '--out', second.output).status, 0);
   assert.match(await readFile(join(second.output, 'src/pages/0.vue'), 'utf8'), /第二个不同内容/);
+});
+
+test('malformed WXSS is a conversion error, not an environment error', async () => {
+  const { input, output } = await sample();
+  await writeFile(join(input, 'pages/home/index.wxss'), '.menu {');
+  const result = run('migrate', input, '--out', output);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /index\.wxss/);
+});
+
+test('each page keeps its own styles above global defaults', async () => {
+  const { input, output } = await sample();
+  await mkdir(join(input, 'pages/second'));
+  await writeFile(join(input, 'app.json'), JSON.stringify({ pages: ['pages/home/index', 'pages/second/index'] }));
+  await writeFile(join(input, 'app.wxss'), '.menu { color: green; }');
+  await writeFile(join(input, 'pages/home/index.wxss'), 'page { background: rgb(255, 255, 0); } .menu { color: red; }');
+  for (const [ext, content] of Object.entries({ js: 'Page({})', json: '{}', wxml: '<view class="menu">第二页</view>', wxss: '.menu { color: blue; }' })) {
+    await writeFile(join(input, `pages/second/index.${ext}`), content);
+  }
+  assert.equal(run('migrate', input, '--out', output).status, 0);
+  await build({ root: output, logLevel: 'silent' });
+  const server = await preview({ root: output, logLevel: 'silent', preview: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(server.resolvedUrls.local[0]);
+    assert.equal(await page.locator('.menu').evaluate(e => getComputedStyle(e).color), 'rgb(255, 0, 0)');
+    await page.goto(server.resolvedUrls.local[0] + '#/pages/second/index');
+    await page.reload();
+    assert.equal(await page.locator('.menu').innerText(), '第二页');
+    assert.equal(await page.locator('.menu').evaluate(e => getComputedStyle(e).color), 'rgb(0, 0, 255)');
+  } finally {
+    await browser?.close();
+    await new Promise((yes, no) => server.httpServer.close(error => error ? no(error) : yes()));
+  }
 });
 
 test('generated static project builds and shows source content, styles and local image in a browser', async () => {
