@@ -5,6 +5,7 @@ import { convertTemplate, convertStyle } from './convert.js';
 import { preparePaths } from './paths.js';
 import { sourceReader, jsonObject, assertEmptyRegistration } from './source.js';
 import { MigrationError } from './errors.js';
+import { convertPage, pageRuntime } from './page.js';
 
 export const version = '0.1.0-dev.0';
 export const targetDependencies = { vue: '2.7.16' };
@@ -23,7 +24,7 @@ export async function migrate(input: string, output: string) {
   const pages = [];
   const assets = new Map<string, string>();
   for (const [index, route] of config.pages.entries()) {
-    assertEmptyRegistration(await read(`${route}.js`), 'Page', `${route}.js`);
+    const script = convertPage(await read(`${route}.js`), `${route}.js`);
     const pageConfig = jsonObject(await read(`${route}.json`), `${route}.json`);
     if (pageConfig.usingComponents && Object.keys(pageConfig.usingComponents as object).length) throw new MigrationError(`${route}: custom components unsupported`);
     const template = convertTemplate(await read(`${route}.wxml`), `${route}.wxml`, src => {
@@ -37,7 +38,7 @@ export async function migrate(input: string, output: string) {
       return `/assets/${name}`;
     });
     const style = convertStyle(await read(`${route}.wxss`), `${route}.wxss`, true);
-    pages.push({ route, index, source: `<template>${template}</template>\n<script>export default {}</script>\n<style scoped>${style}</style>\n` });
+    pages.push({ route, index, source: `<template>${template}</template>\n<script>${script}</script>\n<style scoped>${style}</style>\n` });
   }
   const globalStyle = convertStyle(await read('app.wxss', true), 'app.wxss');
   const files: Record<string, string | Buffer> = {};
@@ -48,6 +49,7 @@ export async function migrate(input: string, output: string) {
     'vite.config.js': "import { defineConfig } from 'vite';\nimport vue from '@vitejs/plugin-vue2';\nexport default defineConfig({ plugins: [vue()], base: './' });\n",
     'src/main.js': `import './global.css';\n${pages.map(p => `import Page${p.index} from './pages/${p.index}.vue';`).join('\n')}\nimport Vue from 'vue';\nconst routes = {${pages.map(p => `${JSON.stringify(p.route)}: Page${p.index}`).join(',')}};\nnew Vue({ render: h => h(routes[location.hash.slice(2)] || Page0) }).$mount('#app');\n`,
     'src/global.css': globalStyle,
+    'src/runtime.js': pageRuntime,
     'README.md': '# Generated Vue 2 project\n\nNode.js 24+ and npm required. Run npm install, npm run build, npm run dev.\n\nGeneration does not imply verification. See migration-report.json.\n',
   });
   for (const page of pages) files[`src/pages/${page.index}.vue`] = page.source;

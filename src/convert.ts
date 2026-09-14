@@ -1,36 +1,9 @@
-import { Parser } from 'htmlparser2';
 import postcss from 'postcss';
 import selectorParser from 'postcss-selector-parser';
 import valueParser from 'postcss-value-parser';
 import { MigrationError } from './errors.js';
-
-const tags: Record<string, string> = { view: 'div', text: 'span', image: 'img' };
-const attributes = new Set(['class', 'id', 'style', 'src', 'alt', 'title']);
-const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-
-export function convertTemplate(source: string, file: string, imageSource: (src: string) => string): string {
-  let result = '';
-  const parser = new Parser({
-    onopentag(name, attrs) {
-      const tag = tags[name];
-      if (!tag) throw new MigrationError(`${file}: unsupported element <${name}>`);
-      const rendered = Object.entries(attrs).map(([key, value]) => {
-        if (!attributes.has(key) || value.includes('{{')) throw new MigrationError(`${file}: unsupported attribute ${key}`);
-        if (key === 'src') value = imageSource(value);
-        if (key === 'style') value = convertStyle(value, file);
-        return ` ${key}="${escape(value)}"`;
-      }).join('');
-      result += `<${tag}${rendered}>`;
-    },
-    ontext(text) {
-      if (text.includes('{{')) throw new MigrationError(`${file}: data bindings are not supported in the static milestone`);
-      result += escape(text);
-    },
-    onclosetag(name) { if (tags[name] !== 'img') result += `</${tags[name]}>`; },
-  }, { xmlMode: true, decodeEntities: true });
-  parser.end(source);
-  return `<div class="minabridge-page">${result}</div>`;
-}
+import { tags } from './template.js';
+export { convertTemplate } from './template.js';
 
 export function convertStyle(source: string, file: string, pageStyle = false): string {
   try {

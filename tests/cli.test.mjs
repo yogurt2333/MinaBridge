@@ -60,6 +60,16 @@ test('malformed WXSS is a conversion error, not an environment error', async () 
   assert.match(result.stderr, /index\.wxss/);
 });
 
+test('CLI diagnoses malformed text bindings and unsupported keyed block loops before generation', async () => {
+  for (const template of ['<text>{{value + }}</text>', '<block wx:for="{{items}}" wx:key="id"><text>{{item.name}}</text></block>']) {
+    const { input, output } = await sample();
+    await writeFile(join(input, 'pages/home/index.wxml'), template);
+    const result = run('migrate', input, '--out', output);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /index\.wxml:\d+:/);
+  }
+});
+
 test('each page keeps its own styles above global defaults', async () => {
   const { input, output } = await sample();
   await mkdir(join(input, 'pages/second'));
@@ -139,4 +149,45 @@ test('CLI refuses unsafe output locations and preserves existing files', async (
   }
   assert.equal(await readFile(join(output, 'keep.txt'), 'utf8'), 'owned by user');
   assert.deepEqual(await readdir(output), ['keep.txt']);
+});
+
+test('dynamic list preserves loop aliases, typed dataset, input events and nested state updates', async () => {
+  const { input, output } = await sample();
+  await writeFile(join(input, 'pages/home/index.js'), `Page({
+    data: { selected: 0, search: '', note: '默认', items: [{ id: 1, name: '绿茶' }, { id: 2, name: '乌龙' }], groups: [{ key: 'size', options: [{ value: 'large', label: '大杯' }] }] },
+    choose(e) { this.setData({ selected: e.currentTarget.dataset.id, note: typeof e.currentTarget.dataset.id + ':' + e.currentTarget.dataset.item.name }); },
+    input(e) { this.setData({ search: e.detail.value }); },
+    option(e) { this.setData({ 'groups[0].options[0].label': e.currentTarget.dataset.value + '已选' }); }
+  });`);
+  await writeFile(join(input, 'pages/home/index.wxml'), `<view>
+    <view wx:for="{{items}}" wx:key="id" class="item {{selected === item.id ? 'active' : ''}}" bind:tap="choose" data-id="{{item.id}}" data-item="{{item}}">{{item.name}}</view>
+    <text class="note">{{note}}</text><input class="search" value="{{search}}" bind:input="input" /><text class="echo">{{search}}</text>
+    <view wx:if="{{selected === 2}}" class="selected">已选乌龙</view><view wx:else class="unselected">未选乌龙</view>
+    <view wx:for="{{groups}}" wx:key="key" wx:for-item="group" wx:for-index="gi"><view wx:for="{{group.options}}" wx:key="value" wx:for-item="opt" class="option" data-value="{{opt.value}}" bindtap="option">{{gi}}:{{opt.label}}</view></view>
+    <scroll-view class="scroll" scroll-y="{{true}}" style="height:150rpx;--label:'10rpx'"><text>滚动区域</text></scroll-view>
+  </view>`);
+  const result = run('migrate', input, '--out', output);
+  assert.equal(result.status, 0, result.stderr);
+  await build({ root: output, logLevel: 'silent' });
+  const server = await preview({ root: output, logLevel: 'silent', preview: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(server.resolvedUrls.local[0]);
+    assert.equal(await page.locator('.scroll').evaluate(e => getComputedStyle(e).overflowY), 'auto');
+    assert.equal(await page.locator('.scroll').evaluate(e => getComputedStyle(e).getPropertyValue('--label')), "'10rpx'");
+    await page.locator('.item').nth(1).click();
+    assert.equal(await page.locator('.note').innerText(), 'number:乌龙');
+    assert.equal(await page.locator('.active').innerText(), '乌龙');
+    assert.equal(await page.locator('.selected').innerText(), '已选乌龙');
+    assert.equal(await page.locator('.unselected').count(), 0);
+    await page.locator('.search').fill('新茶');
+    assert.equal(await page.locator('.echo').innerText(), '新茶');
+    await page.locator('.option').click();
+    assert.equal(await page.locator('.option').innerText(), '0:large已选');
+  } finally {
+    await browser?.close();
+    await new Promise((yes, no) => server.httpServer.close(error => error ? no(error) : yes()));
+  }
 });

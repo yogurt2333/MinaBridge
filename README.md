@@ -4,11 +4,11 @@
 
 仓库：https://github.com/yogurt2333/MinaBridge
 
-开发规格：[v0.1 规格 Issue #1](https://github.com/yogurt2333/MinaBridge/issues/1)；[本地规格](docs/specs/minabridge-v0.1.md)。测试边界已确认，具体实现尚未开始。
+开发规格：[v0.1 规格 Issue #1](https://github.com/yogurt2333/MinaBridge/issues/1)；[本地规格](docs/specs/minabridge-v0.1.md)。测试边界为真实 CLI、生成工程构建和浏览器操作。
 
 ## 当前阶段
 
-已完成原端最小样本验证；首个 CLI 切片支持静态页面迁移，动态咖啡页面仍待后续任务实现。
+已完成原端最小样本验证；CLI 已支持静态页面和单页列表交互迁移，跨页咖啡流程仍待后续任务实现。
 
 - 输入样本：[WeStoreCafe](samples/westore-cafe/README.md)，来自微信官方示例，保留上游 MIT 许可证和版本记录。
 - 已验证链路：饮品分类 → 选择规格 → 加入本地订单 → 结算。
@@ -33,7 +33,7 @@ npm run dev
 
 运行要求：Node.js 24+；生成端固定 Vue 2.7.16、Vite 7.3.6、Vue 2 插件 2.3.4。Windows 路径包含空格或中文时用引号包围。目标目录必须为空且不能与输入目录重叠；重新演示使用新目录。
 
-目前支持空 App/Page 注册下的静态 view/text/image、静态属性、WXSS、rpx 和本地图片。动态绑定、方法、事件、自定义组件、分包、tabBar、CSS import/url 会明确报错。不会执行源工程脚本。自动 verify 尚未实现，生成报告明确标记 `not-run`。
+目前支持空 App 注册、Page 对象初始数据和方法，以及插值、条件、循环别名和 key、tap/input 事件、保留数字及对象类型的 dataset、嵌套 setData 更新。支持 view/text/image/input/button/scroll-view/block、WXSS、内联 rpx 和静态本地图片。带 key 的 block 循环明确报错，请使用实际 view 元素；生命周期、本地模块、自定义组件、分包、tabBar、CSS import/url 尚不支持。迁移时只解析源脚本，生成页面方法在浏览器执行。自动 verify 尚未实现，生成报告明确标记 `not-run`。
 
 后续任务见 [开发任务](https://github.com/yogurt2333/MinaBridge/issues?q=is%3Aissue+is%3Aopen)。模型已确定为本地 Ollama 的 qwen3.5:9b，目前仅确认已安装，尚未接入。
 
@@ -59,3 +59,4 @@ npm test
 - `artifacts/baseline/`：原端验证证据。
 
 这是独立开发项目；开源样本用于可复现实验，不代表个人商业项目经历或已取得业务收益。
+
