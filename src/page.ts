@@ -3,11 +3,12 @@ import { MigrationError } from './errors.js';
 
 export function convertPage(source: string, file: string): string {
   let ast;
-  try { ast = parse(source, { sourceType: 'script' }); }
+  try { ast = parse(source, { sourceType: 'module' }); }
   catch { throw new MigrationError(`${file}: invalid JavaScript`); }
   const statements = ast.program.body.filter(n => n.type !== 'EmptyStatement');
-  const statement = statements[0];
-  if (statements.length !== 1 || statement?.type !== 'ExpressionStatement' || statement.expression.type !== 'CallExpression') throw new MigrationError(`${file}: expected a single Page registration; external dependencies are not supported yet`);
+  const registrations = statements.filter(n => n.type === 'ExpressionStatement' && n.expression.type === 'CallExpression' && n.expression.callee.type === 'Identifier' && n.expression.callee.name === 'Page');
+  const statement = registrations[0];
+  if (registrations.length !== 1 || statement?.type !== 'ExpressionStatement' || statement.expression.type !== 'CallExpression' || statements.some(n => n !== statement && !['VariableDeclaration', 'FunctionDeclaration', 'ImportDeclaration'].includes(n.type))) throw new MigrationError(`${file}: expected one Page registration with local declarations`);
   const call = statement.expression;
   if (call.callee.type !== 'Identifier' || call.callee.name !== 'Page' || call.arguments.length !== 1 || call.arguments[0]?.type !== 'ObjectExpression') throw new MigrationError(`${file}: expected Page({...})`);
   const replacements: { start: number; end: number; text: string }[] = [];
@@ -41,11 +42,11 @@ export function convertPage(source: string, file: string): string {
       if (property.type !== 'ObjectProperty' || property.value.type !== 'ObjectExpression') throw new MigrationError(`${file}: Page data must be an object`);
       data = render(property.value.start!, property.value.end!);
     } else if (property.type === 'ObjectMethod' && property.kind === 'method' || property.type === 'ObjectProperty' && property.value.type === 'FunctionExpression') {
-      if (['onLoad', 'onShow', 'onHide', 'onUnload'].includes(name)) throw new MigrationError(`${file}: page lifecycle is not supported yet`);
       methods.push(render(property.start!, property.end!));
     } else throw new MigrationError(`${file}: unsupported Page member ${name}`);
   }
-  return `import { setData, event, style } from '../runtime.js';\nexport default { data() { return ${data}; }, methods: { $minaSetData: setData, $minaEvent: event, $minaStyle: style, ${methods.join(',\n')} } };`;
+  const declarations = statements.filter(n => n !== statement).map(n => source.slice(n.start!, n.end!)).join('\n');
+  return `import { setData, event, style } from '../runtime.js';\nimport { wx, getCurrentPages } from '../navigation.js';\n${declarations}\nexport default { props: ['minaQuery'], data() { return ${data}; }, mounted() { if(this.onLoad) this.onLoad(this.minaQuery || {}); if(this.onShow) this.onShow(); }, beforeDestroy() { if(this.onUnload) this.onUnload(); }, methods: { $minaSetData: setData, $minaEvent: event, $minaStyle: style, ${methods.join(',\n')} } };`;
 }
 
 export const pageRuntime = `

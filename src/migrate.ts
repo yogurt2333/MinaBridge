@@ -6,6 +6,8 @@ import { preparePaths } from './paths.js';
 import { sourceReader, jsonObject, assertEmptyRegistration } from './source.js';
 import { MigrationError } from './errors.js';
 import { convertPage, pageRuntime } from './page.js';
+import { navigationRuntime } from './navigation.js';
+import { moduleCompiler } from './modules.js';
 
 export const version = '0.1.0-dev.0';
 export const targetDependencies = { vue: '2.7.16' };
@@ -22,9 +24,10 @@ export async function migrate(input: string, output: string) {
   if (config.subPackages || config.subpackages || config.tabBar || config.usingComponents && Object.keys(config.usingComponents as object).length) throw new MigrationError('app.json: unsupported subpackages, tabBar or global components');
   assertEmptyRegistration(await read('app.js'), 'App', 'app.js');
   const pages = [];
+  const modules = moduleCompiler(read);
   const assets = new Map<string, string>();
   for (const [index, route] of config.pages.entries()) {
-    const script = convertPage(await read(`${route}.js`), `${route}.js`);
+    const script = convertPage(await modules.transform(await read(`${route}.js`), `${route}.js`), `${route}.js`);
     const pageConfig = jsonObject(await read(`${route}.json`), `${route}.json`);
     if (pageConfig.usingComponents && Object.keys(pageConfig.usingComponents as object).length) throw new MigrationError(`${route}: custom components unsupported`);
     const template = convertTemplate(await read(`${route}.wxml`), `${route}.wxml`, src => {
@@ -42,14 +45,16 @@ export async function migrate(input: string, output: string) {
   }
   const globalStyle = convertStyle(await read('app.wxss', true), 'app.wxss');
   const files: Record<string, string | Buffer> = {};
+  Object.assign(files, modules.files);
   for (const [source, destination] of assets) files[destination] = await reader.bytes(source);
   Object.assign(files, {
     'package.json': JSON.stringify({ name: 'minabridge-output', private: true, type: 'module', scripts: { dev: 'vite --host 127.0.0.1', build: 'vite build', preview: 'vite preview --host 127.0.0.1' }, dependencies: targetDependencies, devDependencies: targetDevDependencies }, null, 2),
     'index.html': '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>',
     'vite.config.js': "import { defineConfig } from 'vite';\nimport vue from '@vitejs/plugin-vue2';\nexport default defineConfig({ plugins: [vue()], base: './' });\n",
-    'src/main.js': `import './global.css';\n${pages.map(p => `import Page${p.index} from './pages/${p.index}.vue';`).join('\n')}\nimport Vue from 'vue';\nconst routes = {${pages.map(p => `${JSON.stringify(p.route)}: Page${p.index}`).join(',')}};\nnew Vue({ render: h => h(routes[location.hash.slice(2)] || Page0) }).$mount('#app');\n`,
+    'src/main.js': `import './global.css';\n${pages.map(p => `import Page${p.index} from './pages/${p.index}.vue';`).join('\n')}\nimport Vue from 'vue';\nimport { mountPages } from './navigation.js';\nconst routes = {${pages.map(p => `${JSON.stringify(p.route)}: Page${p.index}`).join(',')}};\nmountPages(Vue, routes, ${JSON.stringify(createHash('sha256').update(input).digest('hex'))});\n`,
     'src/global.css': globalStyle,
     'src/runtime.js': pageRuntime,
+    'src/navigation.js': navigationRuntime(createHash('sha256').update(input).digest('hex')),
     'README.md': '# Generated Vue 2 project\n\nNode.js 24+ and npm required. Run npm install, npm run build, npm run dev.\n\nGeneration does not imply verification. See migration-report.json.\n',
   });
   for (const page of pages) files[`src/pages/${page.index}.vue`] = page.source;
