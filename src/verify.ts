@@ -6,6 +6,7 @@ import { MigrationError } from './errors.js';
 
 export async function verify(output:string) {
   const started=performance.now();
+  await writeFile(join(output,'verification-report.json'),JSON.stringify({status:'running',build:'not-run',behavior:'not-run',visual:'not-run',screenshots:[]}));
   const result=await new Promise<{code:number|null;timedOut:boolean;log:string}>(resolve=>{
     const child=spawn(process.execPath,[fileURLToPath(new URL('./verify-worker.js',import.meta.url)),output],{stdio:['ignore','pipe','pipe'],detached:process.platform!=='win32'});
     let log=''; let timedOut=false;

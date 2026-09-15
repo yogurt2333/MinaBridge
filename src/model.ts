@@ -14,7 +14,7 @@ export function modelConfiguration(model: string) {
   return { model, endpoint:new URL('/api/chat',endpoint).href, timeoutMs };
 }
 
-export async function rewriteWithModel(input:string, output:string, config:ReturnType<typeof modelConfiguration>, pages:{route:string}[]) {
+export async function rewriteWithModel(input:string, output:string, config:ReturnType<typeof modelConfiguration>, pages:{route:string}[], feedback='') {
   const source = sourceReader(await realpath(input));
   const report: { model:string; status:string; calls:Record<string,unknown>[]; error?:string } = {model:config.model,status:'running',calls:[]};
   const hash=(content:string)=>createHash('sha256').update(content).digest('hex');
@@ -22,7 +22,7 @@ export async function rewriteWithModel(input:string, output:string, config:Retur
     for (const [index,page] of pages.entries()) {
       const path=`src/pages/${index}.vue`;
       const generated=await readFile(join(output,path),'utf8');
-      const context={path,generated,source:{js:await source.read(page.route+'.js'),wxml:await source.read(page.route+'.wxml'),wxss:await source.read(page.route+'.wxss')}};
+      const context={path,generated,feedback,source:{js:await source.read(page.route+'.js'),wxml:await source.read(page.route+'.wxml'),wxss:await source.read(page.route+'.wxss')}};
       const content=JSON.stringify(context);
       if (Buffer.byteLength(content)>48000) throw new MigrationError('Model context exceeds 48000-byte page budget',2);
       const call:Record<string,unknown>={page:page.route,status:'running',inputTokens:null,outputTokens:null,elapsedMs:0};

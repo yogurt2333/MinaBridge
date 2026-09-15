@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, cp, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { build } from 'vite';
+import { pathToFileURL } from 'node:url';
 
 async function run(args, env) {
   return new Promise((yes,no) => {
@@ -51,6 +52,75 @@ test('invalid model endpoint is a configuration error',async()=>{
   const result=await run(['migrate',resolve('samples/static-menu'),'--out','.test-output/invalid-config','--model','test-model'],{MINABRIDGE_OLLAMA_URL:'not-a-url'});
   assert.equal(result.code,2,result.stderr);
   assert.match(result.stderr,/endpoint URL/);
+});
+
+test('repair does not reuse a previous code failure when the next verifier cannot start',async()=>{
+  const root=await mkdtemp(resolve('.test-output/repair-startup-'));const output=join(root,'h5');
+  const marker=join(root,'fail');const preload=join(root,'preload.mjs');
+  await writeFile(preload,`import {existsSync} from 'node:fs'; if(process.argv[1]?.endsWith('verify-worker.js') && existsSync(${JSON.stringify(marker)})) throw new Error('simulated worker startup failure');`);
+  let calls=0;
+  const server=createServer(async(req,res)=>{
+    let text='';for await(const chunk of req)text+=chunk;
+    const context=JSON.parse(JSON.parse(text).messages[1].content);calls++;
+    if(calls===2)await writeFile(marker,'fail');
+    res.end(JSON.stringify({done:true,message:{content:JSON.stringify({path:context.path,content:context.generated.replaceAll('vw','rpx')})}}));
+  });
+  await new Promise(yes=>server.listen(0,'127.0.0.1',yes));
+  try {
+    const result=await run(['migrate',resolve('samples/static-menu'),'--out',output,'--model','test-model','--verify'],{MINABRIDGE_OLLAMA_URL:`http://127.0.0.1:${server.address().port}`,NODE_OPTIONS:`--import=${pathToFileURL(preload).href}`});
+    assert.equal(result.code,3,result.stderr);assert.equal(calls,2);
+  } finally {server.closeAllConnections();await new Promise(yes=>server.close(yes));}
+});
+
+test('CLI repairs a failed verification with feedback and preserves both rounds',async()=>{
+  const output=join(await mkdtemp(resolve('.test-output/repair-')),'h5');
+  let calls=0;let original='';
+  const server=createServer(async(req,res)=>{
+    let body='';for await(const chunk of req)body+=chunk;
+    const context=JSON.parse(JSON.parse(body).messages[1].content);calls++;
+    if(calls===1)original=context.generated;
+    else assert.match(context.feedback,/rpx/);
+    res.end(JSON.stringify({done:true,message:{content:JSON.stringify({path:context.path,content:calls===1?original.replaceAll('vw','rpx'):original})}}));
+  });
+  await new Promise(yes=>server.listen(0,'127.0.0.1',yes));
+  try {
+    const result=await run(['migrate',resolve('samples/static-menu'),'--out',output,'--model','test-model','--verify'],{MINABRIDGE_OLLAMA_URL:`http://127.0.0.1:${server.address().port}`});
+    assert.equal(result.code,0,result.stderr);assert.equal(calls,2);
+    const report=JSON.parse(await readFile(join(output,'repair-report.json'),'utf8'));
+    assert.equal(report.status,'passed');assert.equal(report.repairs,1);
+    assert.equal(JSON.parse(await readFile(join(output,'rounds/0/verification-report.json'),'utf8')).status,'failed');
+    assert.equal(JSON.parse(await readFile(join(output,'rounds/1/verification-report.json'),'utf8')).status,'passed');
+  } finally {server.closeAllConnections();await new Promise(yes=>server.close(yes));}
+});
+
+test('repair stops at its budget or on environment and invalid model failures',async()=>{
+  for(const mode of ['exhausted','disabled','environment','invalid','timeout']) {
+    const output=join(await mkdtemp(resolve('.test-output/repair-stop-')),'h5');let calls=0;
+    const server=createServer(async(req,res)=>{
+      let text='';for await(const chunk of req)text+=chunk;
+      const context=JSON.parse(JSON.parse(text).messages[1].content);calls++;
+      if(mode==='timeout' && calls>1)return;
+      res.end(JSON.stringify({done:true,message:{content:JSON.stringify({path:mode==='invalid'&&calls>1?'../outside.vue':context.path,content:context.generated.replaceAll('vw','rpx')})}}));
+    });
+    await new Promise(yes=>server.listen(0,'127.0.0.1',yes));
+    try {
+      const args=['migrate',resolve('samples/static-menu'),'--out',output,'--model','test-model','--verify'];
+      if(mode==='disabled')args.push('--max-repairs','0');
+      const env={MINABRIDGE_OLLAMA_URL:`http://127.0.0.1:${server.address().port}`,MINABRIDGE_MODEL_TIMEOUT_MS:'1000'};
+      if(mode==='environment')env.PLAYWRIGHT_BROWSERS_PATH=join(output,'missing');
+      // Environment scenario must reach browser launch rather than the CSS guard.
+      if(mode==='environment')server.removeAllListeners('request').on('request',async(req,res)=>{
+        let text='';for await(const chunk of req)text+=chunk;
+        const context=JSON.parse(JSON.parse(text).messages[1].content);calls++;
+        res.end(JSON.stringify({done:true,message:{content:JSON.stringify({path:context.path,content:context.generated})}}));
+      });
+      const result=await run(args,env);
+      assert.equal(result.code,['environment','timeout'].includes(mode)?3:1,result.stderr);
+      assert.equal(calls,mode==='exhausted'?3:['disabled','environment'].includes(mode)?1:2);
+      const report=JSON.parse(await readFile(join(output,'repair-report.json'),'utf8'));
+      assert.equal(report.status,'failed');assert.equal(report.repairs,calls-1);
+    } finally {server.closeAllConnections();await new Promise(yes=>server.close(yes));}
+  }
 });
 
 test('CLI verify preserves build success when the browser environment is missing',async()=>{
