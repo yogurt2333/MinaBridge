@@ -53,6 +53,37 @@ test('invalid model endpoint is a configuration error',async()=>{
   assert.match(result.stderr,/endpoint URL/);
 });
 
+test('CLI verify preserves build success when the browser environment is missing',async()=>{
+  const output=join(await mkdtemp(resolve('.test-output/verify-environment-')),'h5');
+  const result=await run(['migrate',resolve('samples/static-menu'),'--out',output,'--verify'],{PLAYWRIGHT_BROWSERS_PATH:join(output,'missing-browser')});
+  assert.equal(result.code,3,result.stderr);
+  const report=JSON.parse(await readFile(join(output,'verification-report.json'),'utf8'));
+  assert.equal(report.build,'passed');assert.equal(report.failureKind,'environment');
+  assert.match(report.error,/Chromium unavailable/);
+});
+
+test('CLI verify distinguishes build failure from a browser CSS regression',async()=>{
+  for(const mode of ['build','behavior','runtime']) {
+    const output=join(await mkdtemp(resolve('.test-output/verify-failure-')),'h5');
+    const server=createServer(async(req,res)=>{
+      let text='';for await(const chunk of req)text+=chunk;
+      const context=JSON.parse(JSON.parse(text).messages[1].content);
+      const content=mode==='build'?'<template><div></div></template><script>export default {</script>':mode==='runtime'?context.generated.replace('MinaBridge 茶饮菜单','{{missing.field}}'):context.generated.replaceAll('vw','rpx');
+      res.end(JSON.stringify({done:true,message:{content:JSON.stringify({path:context.path,content})}}));
+    });
+    await new Promise(yes=>server.listen(0,'127.0.0.1',yes));
+    try {
+      const result=await run(['migrate',resolve('samples/static-menu'),'--out',output,'--model','test-model','--verify'],{MINABRIDGE_OLLAMA_URL:`http://127.0.0.1:${server.address().port}`});
+      assert.equal(result.code,1,result.stderr);
+      const report=JSON.parse(await readFile(join(output,'verification-report.json'),'utf8'));
+      assert.equal(report[mode==='runtime'?'behavior':mode],'failed');
+      assert.equal(report.build,mode==='build'?'failed':'passed');
+      assert.equal(report.visual,'not-run');
+      assert.equal(JSON.parse(await readFile(join(output,'migration-report.json'),'utf8')).verification,'failed');
+    } finally {server.closeAllConnections();await new Promise(yes=>server.close(yes));}
+  }
+});
+
 test('CLI preserves generated files when model paths, service or deadline fail', async () => {
   for (const scenario of ['escape','service','timeout','invalid-json','null']) {
     const output=join(await mkdtemp(resolve('.test-output/model-error-')),'h5');
@@ -75,4 +106,3 @@ test('CLI preserves generated files when model paths, service or deadline fail',
     } finally { server.closeAllConnections(); await new Promise(yes=>server.close(yes)); }
   }
 });
-

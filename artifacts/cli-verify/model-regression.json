@@ -1,0 +1,25 @@
+{
+  "status": "failed",
+  "scenario": "smoke",
+  "build": "passed",
+  "behavior": "failed",
+  "visual": "not-run",
+  "screenshots": [],
+  "pages": [
+    {
+      "route": "pages/home/index",
+      "status": "generated"
+    }
+  ],
+  "buildMs": 420,
+  "behaviorMs": 2,
+  "sourceDigest": "818bbc64a6d0bc3366e49c822cfd4bd6544ceccb6312741979492d998c3c22c3",
+  "toolVersion": "0.1.0-dev.0",
+  "target": {
+    "framework": "Vue",
+    "version": "2.7.16"
+  },
+  "failureKind": "code",
+  "error": "Unsupported browser CSS unit rpx in page 0",
+  "elapsedMs": 891
+}

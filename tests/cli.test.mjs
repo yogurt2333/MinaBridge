@@ -28,6 +28,26 @@ function run(...args) {
   return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', timeout: 30_000 });
 }
 
+test('CLI verify builds, checks the browser and saves separate stage results', async () => {
+  const {input,output}=await sample();
+  const result=run('migrate',input,'--out',output,'--verify');
+  assert.equal(result.status,0,result.stderr);
+  const report=JSON.parse(await readFile(join(output,'verification-report.json'),'utf8'));
+  assert.equal(report.build,'passed');
+  assert.equal(report.behavior,'passed');
+  assert.equal(report.visual,'pending-review');
+  assert.ok((await readFile(join(output,report.screenshots[0]))).length>100);
+});
+
+test('CLI verify executes the trusted coffee order scenario',async()=>{
+  const {output}=await sample();
+  const result=run('migrate',resolve('samples/westore-cafe'),'--out',output,'--verify');
+  assert.equal(result.status,0,result.stderr);
+  const report=JSON.parse(await readFile(join(output,'verification-report.json'),'utf8'));
+  assert.equal(report.scenario,'coffee');assert.equal(report.behavior,'passed');
+  assert.equal(report.screenshots.length,2);
+});
+
 test('coffee migration preserves the 22 and 44 yuan order flow', async () => {
   const { root } = await sample();
   const output = join(root, 'coffee');
