@@ -1,7 +1,7 @@
 import { parse } from '@babel/parser';
 import { MigrationError } from './errors.js';
 
-export function convertPage(source: string, file: string): string {
+export function convertPage(source: string, file: string, unavailable: Record<string,string> = {}): string {
   let ast;
   try { ast = parse(source, { sourceType: 'module' }); }
   catch { throw new MigrationError(`${file}: invalid JavaScript`); }
@@ -42,14 +42,34 @@ export function convertPage(source: string, file: string): string {
       if (property.type !== 'ObjectProperty' || property.value.type !== 'ObjectExpression') throw new MigrationError(`${file}: Page data must be an object`);
       data = render(property.value.start!, property.value.end!);
     } else if (property.type === 'ObjectMethod' && property.kind === 'method' || property.type === 'ObjectProperty' && property.value.type === 'FunctionExpression') {
+      let capability = '';
+      function inspect(value: unknown) {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) { value.forEach(inspect); return; }
+        const node = value as Record<string,any>;
+        if (node.type === 'MemberExpression' && node.object.type === 'Identifier' && node.object.name === 'wx' && !node.computed) {
+          if (node.property.name === 'requestPayment') capability = '支付未接入';
+          else if (node.property.name === 'chooseAddress' && !capability) capability = '地址未接入';
+        }
+        for (const [key,child] of Object.entries(node)) if (key !== 'loc') inspect(child);
+      }
+      inspect(property);
+      if (capability) {
+        unavailable[name] = capability;
+        methods.push(`${JSON.stringify(name)}() { wx.showToast({title:${JSON.stringify(capability)}}); }`);
+        continue;
+      }
       methods.push(render(property.start!, property.end!));
     } else throw new MigrationError(`${file}: unsupported Page member ${name}`);
   }
   const declarations = statements.filter(n => n !== statement).map(n => source.slice(n.start!, n.end!)).join('\n');
-  return `import { setData, event, style } from '../runtime.js';\nimport { wx, getCurrentPages } from '../navigation.js';\n${declarations}\nexport default { props: ['minaQuery'], data() { return ${data}; }, mounted() { if(this.onLoad) this.onLoad(this.minaQuery || {}); if(this.onShow) this.onShow(); }, beforeDestroy() { if(this.onUnload) this.onUnload(); }, methods: { $minaSetData: setData, $minaEvent: event, $minaStyle: style, ${methods.join(',\n')} } };`;
+  return `import { setData, event, style, hover } from '../runtime.js';\nimport { wx, getCurrentPages, registerPage, unregisterPage } from '../navigation.js';\n${declarations}\nexport default { props: ['minaQuery','minaId'], data() { return ${data}; }, created() { registerPage(this.minaId,this); if(this.onLoad) this.onLoad(this.minaQuery || {}); }, mounted() { if(this.onShow) this.onShow(); }, beforeDestroy() { if(this.onUnload) this.onUnload(); unregisterPage(this.minaId); }, methods: { $minaSetData: setData, $minaEvent: event, $minaStyle: style, $minaHover: hover, ${methods.join(',\n')} } };`;
 }
 
 export const pageRuntime = `
+export function hover(event, classes, active) {
+  for (const name of String(classes || '').split(/\\s+/).filter(name => name && name !== 'none')) event.currentTarget.classList.toggle(name, active);
+}
 export function setData(patch, callback) {
   for (const [path, value] of Object.entries(patch)) {
     if (!/^[A-Za-z_$][\\w$]*(?:(?:\\.[A-Za-z_$][\\w$]*)|(?:\\[\\d+\\]))*$/.test(path)) throw new Error('Unsupported setData path: ' + path);

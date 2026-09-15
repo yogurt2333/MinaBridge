@@ -28,6 +28,54 @@ function run(...args) {
   return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', timeout: 30_000 });
 }
 
+test('coffee migration preserves the 22 and 44 yuan order flow', async () => {
+  const { root } = await sample();
+  const output = join(root, 'coffee');
+  const result = run('migrate', resolve('samples/westore-cafe'), '--out', output);
+  assert.equal(result.status, 0, result.stderr);
+  await build({root:output,logLevel:'silent'});
+  const server = await preview({root:output,logLevel:'silent',preview:{host:'127.0.0.1',port:0}});
+  let browser;
+  try {
+    browser = await chromium.launch({headless:true});
+    const page = await browser.newPage({viewport:{width:390,height:844}});
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(server.resolvedUrls.local[0]);
+    assert.equal(await page.locator('.md-item').count(),35);
+    await page.locator('.md-tab').filter({hasText:'奶茶'}).click();
+    await page.locator('.md-item').filter({hasText:'抹茶脑袋'}).click();
+    await page.locator('.sp-option').filter({hasText:/^大杯/}).click();
+    await page.locator('.sp-option').filter({hasText:'珍珠'}).click();
+    assert.equal(await page.locator('.sp-summary-price').innerText(),'¥22');
+    assert.ok((await page.locator('.sp-footer').boundingBox()).y > 600);
+    await page.screenshot({path:join(output,'sku.png')});
+    await page.locator('.sp-confirm:visible').click();
+    assert.equal(await page.locator('.ck-fee-total-num').innerText(),'¥22');
+    const firstOrder = new URLSearchParams(page.url().split('?')[1]).get('orderId');
+    assert.ok(firstOrder);
+    assert.match(await page.locator('.ck-goods-spec').innerText(),/大杯/);
+    assert.match(await page.locator('.ck-goods-spec').innerText(),/珍珠/);
+    await page.locator('.ck-page .nav-back').click();
+    assert.equal(await page.locator('.sp-confirm:visible').innerText(),'加入订单');
+    await page.locator('.sp-confirm:visible').click();
+    assert.equal(await page.locator('.ck-fee-total-num').innerText(),'¥44');
+    assert.equal(new URLSearchParams(page.url().split('?')[1]).get('orderId'),firstOrder);
+    assert.equal(await page.locator('.ck-goods-qty').innerText(),'x2');
+    assert.match(await page.locator('.ck-pay-btn').innerText(),/支付未接入/);
+    assert.match(await page.locator('.ck-addr-empty').innerText(),/地址未接入/);
+    await page.locator('.ck-pay-btn').click();
+    assert.equal(await page.getByRole('status').innerText(),'支付未接入');
+    assert.equal(await page.locator('.ck-paid-tip').count(),0);
+    assert.doesNotMatch(await readFile(join(output,'src/pages/2.vue'),'utf8'),/finishPaid|prepay_id=demo/);
+    await page.screenshot({path:join(output,'checkout.png')});
+    assert.deepEqual(errors,[]);
+  } finally {
+    await browser?.close();
+    await new Promise((yes,no)=>server.httpServer.close(error=>error?no(error):yes()));
+  }
+});
+
 test('navigation preserves the previous instance and restores typed storage after relaunch', async () => {
   const { input, output } = await sample();
   await mkdir(join(input, 'pages/detail'));
@@ -37,7 +85,7 @@ test('navigation preserves the previous instance and restores typed storage afte
   await writeFile(join(input, 'pages/home/index.js'), `const { id } = require('../../data/value.js'); Page({data:{count:0,shows:0,saved:0},onLoad(){this.setData({saved:(wx.getStorageSync('choice')||{}).id||0});},onShow(){this.setData({shows:this.data.shows+1});},open(){this.setData({count:this.data.count+1});wx.navigateTo({url:'/pages/detail/index?id='+id+'&name=%E8%8C%B6'});}})`);
   await writeFile(join(input, 'pages/home/index.wxml'), '<view><text class="state">{{count}}:{{shows}}:{{saved}}</text><button class="open" bindtap="open">进入</button></view>');
   const detail = {
-    js: `Page({data:{label:'',width:0},onLoad(q){this.setData({label:q.name+':'+q.id,width:wx.getWindowInfo().windowWidth});wx.setStorageSync('choice',{id:Number(q.id)});},clear(){wx.removeStorageSync('choice');wx.showToast({title:'已清除'});},back(){wx.navigateBack({delta:1});},reset(){wx.reLaunch({url:'/pages/home/index'});}})`,
+    js: `Page({data:{label:'',width:0},onLoad(q){this.setData({label:q.name+':'+q.id+':'+getCurrentPages().length,width:wx.getWindowInfo().windowWidth});wx.setStorageSync('choice',{id:Number(q.id)});},clear(){wx.removeStorageSync('choice');wx.showToast({title:'已清除'});},back(){wx.navigateBack({delta:1});},reset(){wx.reLaunch({url:'/pages/home/index'});}})`,
     json:'{}', wxss:'', wxml:'<view><text class="detail">{{label}}</text><text class="width">{{width}}</text><button class="clear" bindtap="clear">清除</button><button class="back" bindtap="back">返回</button><button class="reset" bindtap="reset">重新进入</button></view>'
   };
   for (const [ext, content] of Object.entries(detail)) await writeFile(join(input, `pages/detail/index.${ext}`), content);
@@ -52,7 +100,7 @@ test('navigation preserves the previous instance and restores typed storage afte
     await page.goto(server.resolvedUrls.local[0]);
     assert.equal(await page.locator('.state:visible').innerText(), '0:1:0');
     await page.locator('.open').click();
-    assert.equal(await page.locator('.detail').innerText(), '茶:7');
+    assert.equal(await page.locator('.detail').innerText(), '茶:7:2');
     await page.locator('.back').click();
     assert.equal(await page.locator('.state:visible').innerText(), '1:2:0');
     await page.locator('.open').click();

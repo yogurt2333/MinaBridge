@@ -20,14 +20,17 @@ function expression(value: string, file: string): string {
   return chunks.length ? chunks.join(' + ') : JSON.stringify(value);
 }
 
-export function convertTemplate(source: string, file: string, imageSource: (src: string) => string): string {
+export function convertTemplate(source: string, file: string, imageSource: (src: string) => string, unavailable: Record<string,string> = {}): string {
   let output = '';
+  const notices: string[] = [];
   const parser = new Parser({
     onopentag(name, attributes) {
       const tag = tags[name];
       if (!tag) throw new MigrationError(`${file}:${parser.startIndex}: unsupported element <${name}>`);
       if (name === 'block' && attributes['wx:for'] && attributes['wx:key']) throw new MigrationError(`${file}:${parser.startIndex}: keyed block loops are unsupported; use a real view element`);
       const emitted: string[] = [];
+      if (name === 'image' && !attributes.alt) emitted.push(' alt=""');
+      notices.push(Object.entries(attributes).filter(([key]) => /^(bind|catch):?tap$/.test(key)).map(([,handler]) => unavailable[handler] || '').join(''));
       const styles: string[] = [];
       const dataset = Object.entries(attributes).filter(([key]) => key.startsWith('data-')).map(([key, val]) => `${JSON.stringify(key.slice(5).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()))}: ${expression(val, file)}`).join(',');
       const bind = (key: string, value: string) => emitted.push(` ${key}="${escape(value)}"`);
@@ -40,6 +43,18 @@ export function convertTemplate(source: string, file: string, imageSource: (src:
         if (key) bind(':key', key === '*this' ? item : key.includes('{{') ? expression(key, file) : `${item}[${JSON.stringify(key)}]`);
       }
       for (const [key, raw] of Object.entries(attributes)) {
+        if (key === 'hover-class') {
+          for (const action of ['pointerdown','pointerup','pointerleave','pointercancel']) bind('@'+action, `$minaHover($event, ${expression(raw,file)}, ${action === 'pointerdown'})`);
+          continue;
+        }
+        if (name === 'input' && key === 'placeholder-class') { bind('data-mina-placeholder',raw); continue; }
+        if (name === 'input' && key === 'confirm-type') { bind('enterkeyhint',raw); continue; }
+        if (name === 'image' && key === 'mode') {
+          if (!['aspectFill','aspectFit','scaleToFill'].includes(raw)) throw new MigrationError(`${file}:${parser.startIndex}: unsupported image mode ${raw}`);
+          styles.push(JSON.stringify('object-fit:' + (raw === 'aspectFill' ? 'cover' : raw === 'aspectFit' ? 'contain' : 'fill'))); continue;
+        }
+        if (name === 'scroll-view' && ['enhanced','enable-flex'].includes(key)) continue;
+        if (name === 'scroll-view' && key === 'show-scrollbar') { styles.push(`(${expression(raw,file)} ? '' : 'scrollbar-width:none')`); continue; }
         if (['wx:for', 'wx:for-item', 'wx:for-index', 'wx:key'].includes(key)) continue;
         if (key === 'wx:if' || key === 'wx:elif') { bind(key === 'wx:if' ? 'v-if' : 'v-else-if', expression(raw, file)); continue; }
         if (key === 'wx:else') { emitted.push(' v-else'); continue; }
@@ -61,7 +76,7 @@ export function convertTemplate(source: string, file: string, imageSource: (src:
       output += `<${tag}${emitted.join('')}>`;
     },
     ontext(text) { expression(text, `${file}:${parser.startIndex}`); output += escape(text); },
-    onclosetag(name) { if (!['img', 'input'].includes(tags[name]!)) output += `</${tags[name]}>`; },
+    onclosetag(name) { const notice = notices.pop(); if (!['img', 'input'].includes(tags[name]!)) output += `${notice ? '<span>（'+escape(notice)+'）</span>' : ''}</${tags[name]}>`; },
   }, { xmlMode: true, decodeEntities: true });
   parser.end(source);
   return `<div class="minabridge-page">${output}</div>`;

@@ -3,6 +3,9 @@ let host;
 let routes;
 const storagePrefix = ${JSON.stringify('minabridge:' + namespace + ':')};
 let nextId = 0;
+const instances = new Map();
+export function registerPage(id, instance) { instances.set(id, instance); }
+export function unregisterPage(id) { instances.delete(id); }
 function entry(url) {
   const current = host && host.stack[host.stack.length - 1];
   const base = 'https://minabridge.local/' + (current ? current.route : '');
@@ -11,7 +14,7 @@ function entry(url) {
   if (parsed.origin !== 'https://minabridge.local' || !Object.hasOwn(routes, route)) throw new Error('Unknown page: ' + url);
   return { id: nextId++, route, query: Object.fromEntries(parsed.searchParams) };
 }
-function current() { return host.$refs['page' + host.stack[host.stack.length - 1].id]; }
+function current() { return instances.get(host.stack[host.stack.length - 1].id); }
 function hook(page, name) { if (page && page[name]) page[name](); }
 function updateUrl() {
   const top = host.stack[host.stack.length - 1];
@@ -60,15 +63,15 @@ export const wx = {
     setTimeout(() => toast.remove(), duration);
   }
 };
-export function getCurrentPages() { return host.stack.map(item => host.$refs['page' + item.id]).filter(Boolean); }
+export function getCurrentPages() { return host.stack.map(item => instances.get(item.id)).filter(Boolean); }
 export function mountPages(Vue, pageRoutes) {
   routes = pageRoutes;
   const initial = entry(location.hash.slice(1) || '/' + Object.keys(routes)[0]);
   host = new Vue({
     data: { stack: [initial] },
     render(h) {
-      return h('div', this.stack.map((item, index) => h(routes[item.route], {
-        key: item.id, ref: 'page' + item.id, props: { minaQuery: item.query },
+      return h('div', {class:'minabridge-stack'}, this.stack.map((item, index) => h(routes[item.route], {
+        key: item.id, ref: 'page' + item.id, props: { minaQuery: item.query, minaId:item.id },
         style: { display: index === this.stack.length - 1 ? '' : 'none' }
       })));
     }

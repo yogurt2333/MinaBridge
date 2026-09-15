@@ -8,7 +8,7 @@
 
 ## 当前阶段
 
-已完成原端最小样本验证；CLI 已支持静态页面、列表交互和合成样本跨页迁移，咖啡完整流程仍待后续任务实现。
+已完成原端最小样本验证；CLI 已支持静态页面、列表交互和合成样本跨页迁移，咖啡三页的 22/44 元流程已通过真实浏览器测试。
 
 - 输入样本：[WeStoreCafe](samples/westore-cafe/README.md)，来自微信官方示例，保留上游 MIT 许可证和版本记录。
 - 已验证链路：饮品分类 → 选择规格 → 加入本地订单 → 结算。
@@ -66,4 +66,7 @@ npm test
 
 这是独立开发项目；开源样本用于可复现实验，不代表个人商业项目经历或已取得业务收益。
 
+
+
+咖啡目标端证据见 [H5 验收报告](artifacts/coffee-h5/report.md)，包含规格页和结算页截图。复现：运行 npm test；仅运行咖啡验收可在 npm run build 后执行 node --test --test-name-pattern='coffee migration' tests/cli.test.mjs。
 

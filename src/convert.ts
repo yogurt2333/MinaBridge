@@ -10,12 +10,14 @@ export function convertStyle(source: string, file: string, pageStyle = false): s
   const css = postcss.parse(source, { from: file, map: { prev: false } });
   css.walkAtRules(rule => { if (rule.name === 'import') throw new MigrationError(`${file}: CSS imports are not supported yet`); });
   css.walkRules(rule => {
+    const placeholderSelectors = rule.selectors.filter(selector => /^\.[\w-]+$/.test(selector)).map(selector => `[data-mina-placeholder~="${selector.slice(1)}"]::placeholder`);
     rule.selector = selectorParser(selectors => {
       selectors.walkTags(tag => {
         if (tag.value === 'page' && pageStyle) tag.replaceWith(selectorParser.className({ value: 'minabridge-page' }));
         else tag.value = tag.value === 'page' ? 'body' : tags[tag.value] ?? tag.value;
       });
     }).processSync(rule.selector);
+    if (placeholderSelectors.length) rule.selector += ', ' + placeholderSelectors.join(', ');
   });
   css.walkDecls(decl => {
     const value = valueParser(decl.value);

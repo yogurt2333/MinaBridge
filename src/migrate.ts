@@ -27,7 +27,8 @@ export async function migrate(input: string, output: string) {
   const modules = moduleCompiler(read);
   const assets = new Map<string, string>();
   for (const [index, route] of config.pages.entries()) {
-    const script = convertPage(await modules.transform(await read(`${route}.js`), `${route}.js`), `${route}.js`);
+    const unavailable: Record<string,string> = {};
+    const script = convertPage(await modules.transform(await read(`${route}.js`), `${route}.js`), `${route}.js`, unavailable);
     const pageConfig = jsonObject(await read(`${route}.json`), `${route}.json`);
     if (pageConfig.usingComponents && Object.keys(pageConfig.usingComponents as object).length) throw new MigrationError(`${route}: custom components unsupported`);
     const template = convertTemplate(await read(`${route}.wxml`), `${route}.wxml`, src => {
@@ -39,7 +40,7 @@ export async function migrate(input: string, output: string) {
       const name = `${createHash('sha256').update(file).digest('hex')}${ext}`;
       assets.set(file, `public/assets/${name}`);
       return `/assets/${name}`;
-    });
+    }, unavailable);
     const style = convertStyle(await read(`${route}.wxss`), `${route}.wxss`, true);
     pages.push({ route, index, source: `<template>${template}</template>\n<script>${script}</script>\n<style scoped>${style}</style>\n` });
   }
@@ -52,7 +53,7 @@ export async function migrate(input: string, output: string) {
     'index.html': '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>',
     'vite.config.js': "import { defineConfig } from 'vite';\nimport vue from '@vitejs/plugin-vue2';\nexport default defineConfig({ plugins: [vue()], base: './' });\n",
     'src/main.js': `import './global.css';\n${pages.map(p => `import Page${p.index} from './pages/${p.index}.vue';`).join('\n')}\nimport Vue from 'vue';\nimport { mountPages } from './navigation.js';\nconst routes = {${pages.map(p => `${JSON.stringify(p.route)}: Page${p.index}`).join(',')}};\nmountPages(Vue, routes, ${JSON.stringify(createHash('sha256').update(input).digest('hex'))});\n`,
-    'src/global.css': globalStyle,
+    'src/global.css': 'html,body,#app,.minabridge-stack,.minabridge-page{height:100%;margin:0;}body{font-family:system-ui,sans-serif;}\n' + globalStyle,
     'src/runtime.js': pageRuntime,
     'src/navigation.js': navigationRuntime(createHash('sha256').update(input).digest('hex')),
     'README.md': '# Generated Vue 2 project\n\nNode.js 24+ and npm required. Run npm install, npm run build, npm run dev.\n\nGeneration does not imply verification. See migration-report.json.\n',

@@ -1,0 +1,25 @@
+{
+  "toolVersion": "0.1.0-dev.0",
+  "target": {
+    "framework": "Vue",
+    "version": "2.7.16"
+  },
+  "sourceDigest": "470f933c6bced0f59f781886c24206829aff79244f30d271da53887a373ad886",
+  "pages": [
+    {
+      "route": "packageWeStoreCoffee/pages/home/home",
+      "status": "generated"
+    },
+    {
+      "route": "packageWeStoreCoffee/pages/sku-picker/sku-picker",
+      "status": "generated"
+    },
+    {
+      "route": "packageWeStoreCoffee/pages/checkout/checkout",
+      "status": "generated"
+    }
+  ],
+  "generation": "passed",
+  "verification": "not-run",
+  "elapsedMs": 79
+}
