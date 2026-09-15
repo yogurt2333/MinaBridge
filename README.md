@@ -35,9 +35,17 @@ npm run dev
 
 目前支持空 App 注册、Page 对象初始数据和方法，以及插值、条件、循环别名和 key、tap/input 事件、保留数字及对象类型的 dataset、嵌套 setData 更新。支持 view/text/image/input/button/scroll-view/block、WXSS、内联 rpx 和静态本地图片。带 key 的 block 循环明确报错，请使用实际 view 元素；已支持 onLoad/onShow/onHide/onUnload、navigateTo/navigateBack/reLaunch 和静态相对路径 CommonJS 模块。自定义组件、分包、tabBar、CSS import/url 尚不支持。迁移时只解析源脚本，生成页面方法在浏览器执行。自动 verify 尚未实现，生成报告明确标记 `not-run`。
 
-后续任务见 [开发任务](https://github.com/yogurt2333/MinaBridge/issues?q=is%3Aissue+is%3Aopen)。模型已确定为本地 Ollama 的 qwen3.5:9b，目前仅确认已安装，尚未接入。
+后续任务见 [开发任务](https://github.com/yogurt2333/MinaBridge/issues?q=is%3Aissue+is%3Aopen)。模型已接入本地 Ollama 的 qwen3.5:9b，首次静态实验发现样式回退，完整模型咖啡验收尚未完成。
 
 ## 验证
+
+模型辅助改写：`node dist/cli.js migrate ./samples/static-menu --out ./output/model-h5 --model qwen3.5:9b`。本机 Ollama 默认地址为 http://127.0.0.1:11434，可通过 `MINABRIDGE_OLLAMA_URL` 指定本地 HTTP origin；目前不支持远程或带凭据地址。协议依据 [Ollama chat 文档](https://docs.ollama.com/api/chat)。超时环境变量 `MINABRIDGE_MODEL_TIMEOUT_MS` 默认 180000，最大 600000。
+
+模型每次只收到当前注册页 JS/WXML/WXSS 和对应生成页，不读取 .env 或项目私有配置。每页上下文上限 48000 UTF-8 字节，响应上限 512000 字节；这属于体积预算，不等同于精确 token 预算。超限明确失败，不截断后继续。当前不向模型提供跨页模块上下文，规则转换先完成后才进入模型阶段，暂不能用模型绕过不支持语法的规则失败。
+
+模型只能替换当前指定的 `src/pages/<index>.vue`，不能指定其他路径、依赖配置、测试或基线。模型输出是代码，路径校验不是执行沙箱，也不保证行为正确。模型失败时保留生成工程及独立 model-report.json/md；之前成功改写的页面仍保留，不实现整批回滚。模型报告 passed 表示响应被接受和应用，不代表构建或业务通过。
+
+首次真实调用已记录在 [模型实验](artifacts/model-static/report.md)：接口与构建通过，但浏览器发现 rpx 样式回退，尚未完成修复。自动 verify 与有限修复仍待实现。
 
 跨页适配保留页面栈中的实例：返回不会重新执行 onLoad，重新进入会创建新实例。当前支持程序调用导航；浏览器原生前进/后退历史同步尚未实现。
 
