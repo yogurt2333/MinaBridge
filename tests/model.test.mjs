@@ -54,6 +54,28 @@ test('invalid model endpoint is a configuration error',async()=>{
   assert.match(result.stderr,/endpoint URL/);
 });
 
+test('coffee verification rejects model corruption of final specs or payment behavior',async()=>{
+  for(const mode of ['specs','payment']) {
+    const output=join(await mkdtemp(resolve('.test-output/coffee-corrupt-')),'h5');
+    const server=createServer(async(req,res)=>{
+      let text='';for await(const chunk of req)text+=chunk;
+      const context=JSON.parse(JSON.parse(text).messages[1].content);
+      let content=context.generated;
+      if(context.path==='src/pages/2.vue') {
+        const before=content;
+        content=mode==='specs'?content.replace('displayItems: buildDisplayItems(order)',"displayItems: buildDisplayItems(order).map(row => order.itemCount > 1 ? {...row,specText:'错误规格'} : row)"):content.replace('wx.showToast({title:"支付未接入"});','this.$minaSetData({paid:true});');
+        assert.notEqual(content,before);
+      }
+      res.end(JSON.stringify({done:true,message:{content:JSON.stringify({path:context.path,content})}}));
+    });
+    await new Promise(yes=>server.listen(0,'127.0.0.1',yes));
+    try {
+      const result=await run(['migrate',resolve('samples/westore-cafe'),'--out',output,'--model','test-model','--verify','--max-repairs','0'],{MINABRIDGE_OLLAMA_URL:`http://127.0.0.1:${server.address().port}`});
+      assert.equal(result.code,1,result.stderr);
+    } finally {server.closeAllConnections();await new Promise(yes=>server.close(yes));}
+  }
+});
+
 test('repair does not reuse a previous code failure when the next verifier cannot start',async()=>{
   const root=await mkdtemp(resolve('.test-output/repair-startup-'));const output=join(root,'h5');
   const marker=join(root,'fail');const preload=join(root,'preload.mjs');

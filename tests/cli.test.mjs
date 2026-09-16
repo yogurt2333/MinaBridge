@@ -266,6 +266,7 @@ test('CLI rejects escaping, dynamic and cyclic CommonJS dependencies', async () 
     ["const x = require('../../../outside.js'); Page({});", 2, /escapes input/],
     ["const x = require(name); Page({});", 1, /literal relative/],
     ["const x = require('./index.js'); Page({});", 1, /cyclic/],
+    ["Page({ click() { return require('./index.js'); } });", 1, /top-level/],
   ]) {
     const { input, output } = await sample();
     await writeFile(join(input, 'pages/home/index.js'), source);

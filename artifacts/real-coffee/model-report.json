@@ -1,0 +1,33 @@
+{
+  "model": "qwen3.5:9b",
+  "status": "passed",
+  "calls": [
+    {
+      "page": "packageWeStoreCoffee/pages/home/home",
+      "status": "passed",
+      "inputTokens": 10778,
+      "outputTokens": 5867,
+      "elapsedMs": 176579,
+      "before": "3b93368848ec4f4456effdda17eaaf9fc161cfe13eee402562b204488d8e8402",
+      "after": "797b079d4d839983d1e467b9a3de670e52fd9e05fe44ef3a6b1de966ddab6336"
+    },
+    {
+      "page": "packageWeStoreCoffee/pages/sku-picker/sku-picker",
+      "status": "passed",
+      "inputTokens": 14638,
+      "outputTokens": 7614,
+      "elapsedMs": 224922,
+      "before": "029368ac125d7c2729b6f91bf4db09c59ac4e903085f1c2ece5e4c9c295b4938",
+      "after": "c9c826289469160c94e920abf2ebed2464aae95add84eb207e4a3eab0979cda7"
+    },
+    {
+      "page": "packageWeStoreCoffee/pages/checkout/checkout",
+      "status": "passed",
+      "inputTokens": 14336,
+      "outputTokens": 7380,
+      "elapsedMs": 184523,
+      "before": "760fe76bed2165c6aa44fced74d38231af4cb2f75dd1486629518ce9064eb63d",
+      "after": "fb1de843a120068e399a34edaf4399ca7b298064699ad3077bc8b4dff428417d"
+    }
+  ]
+}

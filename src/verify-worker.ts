@@ -60,6 +60,9 @@ try {
     await screenshot(page,'sku');
     await page.locator('.sp-confirm:visible').click();
     assert.equal(await page.locator('.ck-fee-total-num').innerText(),'¥22');
+    assert.equal(await page.locator('.ck-goods').count(),1);
+    assert.match(await page.locator('.ck-card-title').last().innerText(),/共1件/);
+    assert.match(await page.locator('.ck-goods-name').innerText(),/抹茶脑袋/);
     const order=new URLSearchParams(page.url().split('?')[1]).get('orderId');assert.ok(order);
     assert.match(await page.locator('.ck-goods-spec').innerText(),/大杯/);
     assert.match(await page.locator('.ck-goods-spec').innerText(),/珍珠/);
@@ -68,9 +71,19 @@ try {
     assert.equal(new URLSearchParams(page.url().split('?')[1]).get('orderId'),order);
     assert.equal(await page.locator('.ck-fee-total-num').innerText(),'¥44');
     assert.equal(await page.locator('.ck-goods-qty').innerText(),'x2');
+    assert.equal(await page.locator('.ck-goods').count(),1);
+    assert.match(await page.locator('.ck-card-title').last().innerText(),/共2件/);
+    assert.match(await page.locator('.ck-goods-name').innerText(),/抹茶脑袋/);
+    assert.equal(await page.locator('.ck-goods-spec').innerText(),'冰 / 标准 / 大杯 / 加料:珍珠');
     assert.match(await page.locator('.ck-pay-btn').innerText(),/支付未接入/);
     assert.match(await page.locator('.ck-addr-empty').innerText(),/地址未接入/);
     await screenshot(page,'checkout');
+    await page.locator('.ck-addr-empty').click();
+    assert.equal(await page.getByRole('status').last().innerText(),'地址未接入');
+    await page.locator('.ck-pay-btn').click();
+    assert.equal(await page.getByRole('status').last().innerText(),'支付未接入');
+    assert.equal(await page.locator('.ck-paid-tip').count(),0);
+    assert.equal(await page.locator('.ck-fee-total-num').innerText(),'¥44');
   } else {
     assert.ok(await page.locator('.minabridge-page').isVisible());
     assert.ok((await page.locator('body').innerText()).trim().length>0);

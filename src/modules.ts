@@ -11,11 +11,13 @@ export function moduleCompiler(read: (file: string) => Promise<string>) {
     try { ast = parse(source, { sourceType: 'script' }); }
     catch { throw new MigrationError(`${file}: invalid JavaScript`); }
     const calls: {start:number;end:number;path:string}[] = [];
+    const eagerInitializers:Set<unknown>=new Set(ast.program.body.flatMap(statement=>statement.type==='VariableDeclaration'?statement.declarations.map(declaration=>declaration.init):[]));
     function walk(value: unknown) {
       if (!value || typeof value !== 'object') return;
       if (Array.isArray(value)) { value.forEach(walk); return; }
       const node = value as Record<string, any>;
       if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'require') {
+        if(!eagerInitializers.has(value)) throw new MigrationError(`${file}:${node.start}: require is supported only as a top-level variable initializer`);
         const arg = node.arguments[0];
         if (node.arguments.length !== 1 || arg?.type !== 'StringLiteral' || !arg.value.startsWith('.')) throw new MigrationError(`${file}:${node.start}: only literal relative require paths are supported`);
         let path = posix.normalize(posix.join(posix.dirname(file), arg.value));
