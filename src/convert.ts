@@ -1,48 +1,23 @@
-import { Parser } from 'htmlparser2';
 import postcss from 'postcss';
 import selectorParser from 'postcss-selector-parser';
 import valueParser from 'postcss-value-parser';
 import { MigrationError } from './errors.js';
-
-const tags: Record<string, string> = { view: 'div', text: 'span', image: 'img' };
-const attributes = new Set(['class', 'id', 'style', 'src', 'alt', 'title']);
-const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-
-export function convertTemplate(source: string, file: string, imageSource: (src: string) => string): string {
-  let result = '';
-  const parser = new Parser({
-    onopentag(name, attrs) {
-      const tag = tags[name];
-      if (!tag) throw new MigrationError(`${file}: unsupported element <${name}>`);
-      const rendered = Object.entries(attrs).map(([key, value]) => {
-        if (!attributes.has(key) || value.includes('{{')) throw new MigrationError(`${file}: unsupported attribute ${key}`);
-        if (key === 'src') value = imageSource(value);
-        if (key === 'style') value = convertStyle(value, file);
-        return ` ${key}="${escape(value)}"`;
-      }).join('');
-      result += `<${tag}${rendered}>`;
-    },
-    ontext(text) {
-      if (text.includes('{{')) throw new MigrationError(`${file}: data bindings are not supported in the static milestone`);
-      result += escape(text);
-    },
-    onclosetag(name) { if (tags[name] !== 'img') result += `</${tags[name]}>`; },
-  }, { xmlMode: true, decodeEntities: true });
-  parser.end(source);
-  return `<div class="minabridge-page">${result}</div>`;
-}
+import { tags } from './template.js';
+export { convertTemplate } from './template.js';
 
 export function convertStyle(source: string, file: string, pageStyle = false): string {
   try {
   const css = postcss.parse(source, { from: file, map: { prev: false } });
   css.walkAtRules(rule => { if (rule.name === 'import') throw new MigrationError(`${file}: CSS imports are not supported yet`); });
   css.walkRules(rule => {
+    const placeholderSelectors = rule.selectors.filter(selector => /^\.[\w-]+$/.test(selector)).map(selector => `[data-mina-placeholder~="${selector.slice(1)}"]::placeholder`);
     rule.selector = selectorParser(selectors => {
       selectors.walkTags(tag => {
         if (tag.value === 'page' && pageStyle) tag.replaceWith(selectorParser.className({ value: 'minabridge-page' }));
         else tag.value = tag.value === 'page' ? 'body' : tags[tag.value] ?? tag.value;
       });
     }).processSync(rule.selector);
+    if (placeholderSelectors.length) rule.selector += ', ' + placeholderSelectors.join(', ');
   });
   css.walkDecls(decl => {
     const value = valueParser(decl.value);

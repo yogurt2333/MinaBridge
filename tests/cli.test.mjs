@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, cp } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { build, preview } from 'vite';
@@ -27,6 +27,116 @@ async function sample(label = '第一杯茶') {
 function run(...args) {
   return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', timeout: 30_000 });
 }
+
+test('CLI verify builds, checks the browser and saves separate stage results', async () => {
+  const {input,output}=await sample();
+  const result=run('migrate',input,'--out',output,'--verify');
+  assert.equal(result.status,0,result.stderr);
+  const report=JSON.parse(await readFile(join(output,'verification-report.json'),'utf8'));
+  assert.equal(report.build,'passed');
+  assert.equal(report.behavior,'passed');
+  assert.equal(report.visual,'pending-review');
+  assert.ok((await readFile(join(output,report.screenshots[0]))).length>100);
+});
+
+test('CLI verify executes the trusted coffee order scenario',async()=>{
+  const {output}=await sample();
+  const result=run('migrate',resolve('samples/westore-cafe'),'--out',output,'--verify');
+  assert.equal(result.status,0,result.stderr);
+  const report=JSON.parse(await readFile(join(output,'verification-report.json'),'utf8'));
+  assert.equal(report.scenario,'coffee');assert.equal(report.behavior,'passed');
+  assert.equal(report.screenshots.length,2);
+});
+
+test('coffee migration preserves the 22 and 44 yuan order flow', async () => {
+  const { root } = await sample();
+  const output = join(root, 'coffee');
+  const result = run('migrate', resolve('samples/westore-cafe'), '--out', output);
+  assert.equal(result.status, 0, result.stderr);
+  await build({root:output,logLevel:'silent'});
+  const server = await preview({root:output,logLevel:'silent',preview:{host:'127.0.0.1',port:0}});
+  let browser;
+  try {
+    browser = await chromium.launch({headless:true});
+    const page = await browser.newPage({viewport:{width:390,height:844}});
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(server.resolvedUrls.local[0]);
+    assert.equal(await page.locator('.md-item').count(),35);
+    await page.locator('.md-tab').filter({hasText:'奶茶'}).click();
+    await page.locator('.md-item').filter({hasText:'抹茶脑袋'}).click();
+    await page.locator('.sp-option').filter({hasText:/^大杯/}).click();
+    await page.locator('.sp-option').filter({hasText:'珍珠'}).click();
+    assert.equal(await page.locator('.sp-summary-price').innerText(),'¥22');
+    assert.ok((await page.locator('.sp-footer').boundingBox()).y > 600);
+    await page.screenshot({path:join(output,'sku.png')});
+    await page.locator('.sp-confirm:visible').click();
+    assert.equal(await page.locator('.ck-fee-total-num').innerText(),'¥22');
+    const firstOrder = new URLSearchParams(page.url().split('?')[1]).get('orderId');
+    assert.ok(firstOrder);
+    assert.match(await page.locator('.ck-goods-spec').innerText(),/大杯/);
+    assert.match(await page.locator('.ck-goods-spec').innerText(),/珍珠/);
+    await page.locator('.ck-page .nav-back').click();
+    assert.equal(await page.locator('.sp-confirm:visible').innerText(),'加入订单');
+    await page.locator('.sp-confirm:visible').click();
+    assert.equal(await page.locator('.ck-fee-total-num').innerText(),'¥44');
+    assert.equal(new URLSearchParams(page.url().split('?')[1]).get('orderId'),firstOrder);
+    assert.equal(await page.locator('.ck-goods-qty').innerText(),'x2');
+    assert.match(await page.locator('.ck-pay-btn').innerText(),/支付未接入/);
+    assert.match(await page.locator('.ck-addr-empty').innerText(),/地址未接入/);
+    await page.locator('.ck-pay-btn').click();
+    assert.equal(await page.getByRole('status').innerText(),'支付未接入');
+    assert.equal(await page.locator('.ck-paid-tip').count(),0);
+    assert.doesNotMatch(await readFile(join(output,'src/pages/2.vue'),'utf8'),/finishPaid|prepay_id=demo/);
+    await page.screenshot({path:join(output,'checkout.png')});
+    assert.deepEqual(errors,[]);
+  } finally {
+    await browser?.close();
+    await new Promise((yes,no)=>server.httpServer.close(error=>error?no(error):yes()));
+  }
+});
+
+test('navigation preserves the previous instance and restores typed storage after relaunch', async () => {
+  const { input, output } = await sample();
+  await mkdir(join(input, 'pages/detail'));
+  await writeFile(join(input, 'app.json'), JSON.stringify({ pages: ['pages/home/index', 'pages/detail/index'] }));
+  await mkdir(join(input, 'data'));
+  await writeFile(join(input, 'data/value.js'), "module.exports = { get id() { wx.setStorageSync('moduleUsed', true); return 7; } };");
+  await writeFile(join(input, 'pages/home/index.js'), `const { id } = require('../../data/value.js'); Page({data:{count:0,shows:0,saved:0},onLoad(){this.setData({saved:(wx.getStorageSync('choice')||{}).id||0});},onShow(){this.setData({shows:this.data.shows+1});},open(){this.setData({count:this.data.count+1});wx.navigateTo({url:'/pages/detail/index?id='+id+'&name=%E8%8C%B6'});}})`);
+  await writeFile(join(input, 'pages/home/index.wxml'), '<view><text class="state">{{count}}:{{shows}}:{{saved}}</text><button class="open" bindtap="open">进入</button></view>');
+  const detail = {
+    js: `Page({data:{label:'',width:0},onLoad(q){this.setData({label:q.name+':'+q.id+':'+getCurrentPages().length,width:wx.getWindowInfo().windowWidth});wx.setStorageSync('choice',{id:Number(q.id)});},clear(){wx.removeStorageSync('choice');wx.showToast({title:'已清除'});},back(){wx.navigateBack({delta:1});},reset(){wx.reLaunch({url:'/pages/home/index'});}})`,
+    json:'{}', wxss:'', wxml:'<view><text class="detail">{{label}}</text><text class="width">{{width}}</text><button class="clear" bindtap="clear">清除</button><button class="back" bindtap="back">返回</button><button class="reset" bindtap="reset">重新进入</button></view>'
+  };
+  for (const [ext, content] of Object.entries(detail)) await writeFile(join(input, `pages/detail/index.${ext}`), content);
+  const result = run('migrate', input, '--out', output);
+  assert.equal(result.status, 0, result.stderr);
+  await build({ root: output, logLevel: 'silent' });
+  const server = await preview({ root: output, logLevel: 'silent', preview: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless:true });
+    const page = await browser.newPage();
+    await page.goto(server.resolvedUrls.local[0]);
+    assert.equal(await page.locator('.state:visible').innerText(), '0:1:0');
+    await page.locator('.open').click();
+    assert.equal(await page.locator('.detail').innerText(), '茶:7:2');
+    await page.locator('.back').click();
+    assert.equal(await page.locator('.state:visible').innerText(), '1:2:0');
+    await page.locator('.open').click();
+    await page.locator('.reset').click();
+    assert.equal(await page.locator('.state:visible').innerText(), '0:1:7');
+    await page.locator('.open').click();
+    assert.equal(await page.locator('.width').innerText(), '1280');
+    await page.locator('.clear').click();
+    assert.equal(await page.getByRole('status').innerText(), '已清除');
+    await page.locator('.reset').click();
+    assert.equal(await page.locator('.state:visible').innerText(), '0:1:0');
+  } finally {
+    await browser?.close();
+    await new Promise((yes,no) => server.httpServer.close(error => error ? no(error) : yes()));
+  }
+});
 
 test('CLI converts input content to a standalone Vue 2 project with unverified report', async () => {
   const { input, output } = await sample();
@@ -58,6 +168,16 @@ test('malformed WXSS is a conversion error, not an environment error', async () 
   const result = run('migrate', input, '--out', output);
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /index\.wxss/);
+});
+
+test('CLI diagnoses malformed text bindings and unsupported keyed block loops before generation', async () => {
+  for (const template of ['<text>{{value + }}</text>', '<block wx:for="{{items}}" wx:key="id"><text>{{item.name}}</text></block>']) {
+    const { input, output } = await sample();
+    await writeFile(join(input, 'pages/home/index.wxml'), template);
+    const result = run('migrate', input, '--out', output);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /index\.wxml:\d+:/);
+  }
 });
 
 test('each page keeps its own styles above global defaults', async () => {
@@ -139,4 +259,91 @@ test('CLI refuses unsafe output locations and preserves existing files', async (
   }
   assert.equal(await readFile(join(output, 'keep.txt'), 'utf8'), 'owned by user');
   assert.deepEqual(await readdir(output), ['keep.txt']);
+});
+
+test('CLI rejects escaping, dynamic and cyclic CommonJS dependencies', async () => {
+  for (const [source, code, message] of [
+    ["const x = require('../../../outside.js'); Page({});", 2, /escapes input/],
+    ["const x = require(name); Page({});", 1, /literal relative/],
+    ["const x = require('./index.js'); Page({});", 1, /cyclic/],
+    ["Page({ click() { return require('./index.js'); } });", 1, /top-level/],
+  ]) {
+    const { input, output } = await sample();
+    await writeFile(join(input, 'pages/home/index.js'), source);
+    const result = run('migrate', input, '--out', output);
+    assert.equal(result.status, code, result.stderr);
+    assert.match(result.stderr, message);
+  }
+});
+
+test('storage is isolated between source projects and rejects undefined without corrupting a value', async () => {
+  const projects = [await sample(), await sample()];
+  for (const project of projects) {
+    await writeFile(join(project.input, 'pages/home/index.js'), `Page({data:{value:'',error:''},onLoad(){this.setData({value:wx.getStorageSync('same')});},save(){wx.setStorageSync('same',9);try{wx.setStorageSync('same',undefined);}catch(e){this.setData({error:'rejected'});}this.setData({value:wx.getStorageSync('same')});}})`);
+    await writeFile(join(project.input, 'pages/home/index.wxml'), '<view><text class="value">{{value}}</text><text class="error">{{error}}</text><button bindtap="save">保存</button></view>');
+    const result = run('migrate', project.input, '--out', project.output);
+    assert.equal(result.status, 0, result.stderr);
+    await build({root:project.output,logLevel:'silent'});
+  }
+  const [first,second] = projects;
+  await cp(join(second.output,'dist'),join(first.output,'dist/other'),{recursive:true});
+  const server = await preview({root:first.output,logLevel:'silent',preview:{host:'127.0.0.1',port:0}});
+  let browser;
+  try {
+    browser = await chromium.launch({headless:true});
+    const page = await browser.newPage();
+    const url = server.resolvedUrls.local[0];
+    await page.goto(url);
+    await page.getByRole('button').click();
+    assert.equal(await page.locator('.value').innerText(),'9');
+    assert.equal(await page.locator('.error').innerText(),'rejected');
+    await page.goto(url+'other/');
+    assert.equal(await page.locator('.value').innerText(),'');
+    await page.goto(url);
+    assert.equal(await page.locator('.value').innerText(),'9');
+  } finally {
+    await browser?.close();
+    await new Promise((yes,no)=>server.httpServer.close(error=>error?no(error):yes()));
+  }
+});
+
+test('dynamic list preserves loop aliases, typed dataset, input events and nested state updates', async () => {
+  const { input, output } = await sample();
+  await writeFile(join(input, 'pages/home/index.js'), `Page({
+    data: { selected: 0, search: '', note: '默认', items: [{ id: 1, name: '绿茶' }, { id: 2, name: '乌龙' }], groups: [{ key: 'size', options: [{ value: 'large', label: '大杯' }] }] },
+    choose(e) { this.setData({ selected: e.currentTarget.dataset.id, note: typeof e.currentTarget.dataset.id + ':' + e.currentTarget.dataset.item.name }); },
+    input(e) { this.setData({ search: e.detail.value }); },
+    option(e) { this.setData({ 'groups[0].options[0].label': e.currentTarget.dataset.value + '已选' }); }
+  });`);
+  await writeFile(join(input, 'pages/home/index.wxml'), `<view>
+    <view wx:for="{{items}}" wx:key="id" class="item {{selected === item.id ? 'active' : ''}}" bind:tap="choose" data-id="{{item.id}}" data-item="{{item}}">{{item.name}}</view>
+    <text class="note">{{note}}</text><input class="search" value="{{search}}" bind:input="input" /><text class="echo">{{search}}</text>
+    <view wx:if="{{selected === 2}}" class="selected">已选乌龙</view><view wx:else class="unselected">未选乌龙</view>
+    <view wx:for="{{groups}}" wx:key="key" wx:for-item="group" wx:for-index="gi"><view wx:for="{{group.options}}" wx:key="value" wx:for-item="opt" class="option" data-value="{{opt.value}}" bindtap="option">{{gi}}:{{opt.label}}</view></view>
+    <scroll-view class="scroll" scroll-y="{{true}}" style="height:150rpx;--label:'10rpx'"><text>滚动区域</text></scroll-view>
+  </view>`);
+  const result = run('migrate', input, '--out', output);
+  assert.equal(result.status, 0, result.stderr);
+  await build({ root: output, logLevel: 'silent' });
+  const server = await preview({ root: output, logLevel: 'silent', preview: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(server.resolvedUrls.local[0]);
+    assert.equal(await page.locator('.scroll').evaluate(e => getComputedStyle(e).overflowY), 'auto');
+    assert.equal(await page.locator('.scroll').evaluate(e => getComputedStyle(e).getPropertyValue('--label')), "'10rpx'");
+    await page.locator('.item').nth(1).click();
+    assert.equal(await page.locator('.note').innerText(), 'number:乌龙');
+    assert.equal(await page.locator('.active').innerText(), '乌龙');
+    assert.equal(await page.locator('.selected').innerText(), '已选乌龙');
+    assert.equal(await page.locator('.unselected').count(), 0);
+    await page.locator('.search').fill('新茶');
+    assert.equal(await page.locator('.echo').innerText(), '新茶');
+    await page.locator('.option').click();
+    assert.equal(await page.locator('.option').innerText(), '0:large已选');
+  } finally {
+    await browser?.close();
+    await new Promise((yes, no) => server.httpServer.close(error => error ? no(error) : yes()));
+  }
 });

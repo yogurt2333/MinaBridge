@@ -1,0 +1,36 @@
+{
+  "status": "passed",
+  "scenario": "coffee",
+  "build": "passed",
+  "behavior": "passed",
+  "visual": "pending-review",
+  "screenshots": [
+    "verify-zHBcVr/sku.png",
+    "verify-zHBcVr/checkout.png"
+  ],
+  "pages": [
+    {
+      "route": "packageWeStoreCoffee/pages/home/home",
+      "status": "generated"
+    },
+    {
+      "route": "packageWeStoreCoffee/pages/sku-picker/sku-picker",
+      "status": "generated"
+    },
+    {
+      "route": "packageWeStoreCoffee/pages/checkout/checkout",
+      "status": "generated"
+    }
+  ],
+  "buildMs": 522,
+  "behaviorMs": 539,
+  "sourceDigest": "470f933c6bced0f59f781886c24206829aff79244f30d271da53887a373ad886",
+  "toolVersion": "0.1.0-dev.0",
+  "target": {
+    "framework": "Vue",
+    "version": "2.7.16"
+  },
+  "failureKind": "",
+  "error": "",
+  "elapsedMs": 1551
+}

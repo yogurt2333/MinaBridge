@@ -1,0 +1,17 @@
+{
+  "toolVersion": "0.1.0-dev.0",
+  "target": {
+    "framework": "Vue",
+    "version": "2.7.16"
+  },
+  "sourceDigest": "818bbc64a6d0bc3366e49c822cfd4bd6544ceccb6312741979492d998c3c22c3",
+  "pages": [
+    {
+      "route": "pages/home/index",
+      "status": "generated"
+    }
+  ],
+  "generation": "passed",
+  "verification": "not-run",
+  "elapsedMs": 17
+}

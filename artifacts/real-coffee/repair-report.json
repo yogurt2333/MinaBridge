@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "maxRepairs": 2,
+  "repairs": 0,
+  "rounds": [
+    {
+      "round": 0,
+      "status": "passed",
+      "elapsedMs": 587904
+    }
+  ]
+}

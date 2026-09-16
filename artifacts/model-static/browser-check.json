@@ -1,0 +1,9 @@
+{
+  "viewport": {
+    "width": 375,
+    "height": 812
+  },
+  "expectedPaddingTop": "20px",
+  "actualPaddingTop": "0px",
+  "status": "failed"
+}
